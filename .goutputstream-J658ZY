@@ -1,0 +1,445 @@
+////////////////////////////////////////////////////////////////
+// ELEX 4618 Template project for BCIT
+// Created Oct 5, 2016 by Craig Hennesseym modified by Terr Calderbank 25 April 2017
+// Last updated March 23, 2017
+////////////////////////////////////////////////////////////////
+
+#include <string>
+#include <iostream>
+#include <thread>
+
+// OpenCV Include
+//#include "opencv.hpp"
+//#include "highgui.hpp"
+#include <opencv2/opencv.hpp>
+//#include <opencv2/highgui.hpp>
+#include <wiringPi.h>
+#include <pigpio.h>
+#include <softPwm.h>
+#include <iostream>
+#include "kbhit.h"
+#include "car.h"
+#include <math.h>
+
+
+#define HIGH 1
+#define LOW 0
+#define ENR 21
+#define ENL 20
+#define in1R 26
+#define in2R 19
+#define in1L 6
+#define in2L 13
+#define pulse 2
+#define trigger 2
+#define echo 3
+
+#define PWMPERIOD 2500
+#define MIDRANGE 1200
+#define SPEEDSTEP 100
+#define ERROR_RANGE 250
+#define ACCEPTABLE_ERROR 10
+#define LEFTBIAS 400
+
+
+//#define servo 3
+
+using namespace std;
+
+
+
+
+void forward()
+{
+	cout << "FORWARD\n";
+	gpioPWM(ENR, MIDRANGE);
+	gpioWrite(in2R, LOW);
+	gpioWrite(in1R, HIGH);
+	
+	gpioPWM(ENL, MIDRANGE+LEFTBIAS);
+	gpioWrite(in2L, LOW);
+	gpioWrite(in1L, HIGH);
+	/*softPwmWrite(ENR,PWMPERIOD);			
+	digitalWrite(in2R, LOW);
+	digitalWrite(in1R, HIGH);
+	
+	softPwmWrite(ENL,PWMPERIOD);			
+	digitalWrite(in2L, LOW);
+	digitalWrite(in1L, HIGH);*/
+}
+
+void backward()
+{
+	cout << "BACKWARD\n";
+	gpioPWM(ENR, PWMPERIOD);
+	gpioWrite(in2R, HIGH);
+	gpioWrite(in1R, LOW);
+	
+	gpioPWM(ENL, PWMPERIOD);
+	gpioWrite(in2L, HIGH);
+	gpioWrite(in1L, LOW);
+	
+	/*softPwmWrite(ENR,PWMPERIOD);
+	digitalWrite(in1R, LOW);
+	digitalWrite(in2R, HIGH);
+	
+	softPwmWrite(ENL,PWMPERIOD);
+	digitalWrite(in1L, LOW);
+	digitalWrite(in2L, HIGH);*/
+}
+
+void left()
+{
+	cout << "LEFT\n";
+	gpioPWM(ENR, PWMPERIOD);
+	gpioWrite(in2R, LOW);
+	gpioWrite(in1R, HIGH);
+	
+	gpioPWM(ENL, PWMPERIOD);
+	gpioWrite(in2L, HIGH);
+	gpioWrite(in1L, LOW);
+	
+	/*softPwmWrite(ENR,PWMPERIOD/2);			
+	digitalWrite(in2R, HIGH);
+	digitalWrite(in1R, LOW);
+	
+	softPwmWrite(ENL,PWMPERIOD/2);			
+	digitalWrite(in2L, LOW);
+	digitalWrite(in1L, HIGH);*/
+}
+
+void right()
+{
+	cout << "RIGHT\n";
+	gpioPWM(ENR, PWMPERIOD);
+	gpioWrite(in2R, HIGH);
+	gpioWrite(in1R, LOW);
+	
+	gpioPWM(ENL, PWMPERIOD);
+	gpioWrite(in2L, LOW);
+	gpioWrite(in1L, HIGH);
+	/*softPwmWrite(ENR,PWMPERIOD/2);			
+	digitalWrite(in2R, LOW);
+	digitalWrite(in1R, HIGH);
+	
+	softPwmWrite(ENL,PWMPERIOD/2);			
+	digitalWrite(in2L, HIGH);
+	digitalWrite(in1L, LOW);*/
+}
+
+
+void stopcar()
+{
+	gpioPWM(ENR, 0);
+	gpioWrite(in2R, LOW);
+	gpioWrite(in1R, LOW);
+	
+	gpioPWM(ENL, 0);
+	gpioWrite(in2L, LOW);
+	gpioWrite(in1L, LOW);
+	/*digitalWrite(in1R, LOW);
+	digitalWrite(in2R, LOW);
+	softPwmWrite(ENR,0);
+	
+	digitalWrite(in1L, LOW);
+	digitalWrite(in2L, LOW);
+	softPwmWrite(ENL,0);*/
+}
+/*
+void fire()
+{
+	cout << "FIRING\n\n";
+	
+	softPwmWrite(3, 12);
+	delay(500);
+	softPwmWrite(3, 15.5);
+	delay(1000);
+	digitalWrite(pulse,HIGH);
+	delay(18);
+	digitalWrite(pulse,LOW);
+	softPwmWrite(3, 5.5);
+	
+}
+*/
+int get_distance()
+{
+	//int timeout = millis();
+	int timeout = gpioTick();
+	int start = 0;
+	int stop = 0;
+	int time_of_flight = 0;
+	//digitalWrite(trigger, HIGH);
+	gpioTrigger(trigger, 10, 1);
+	//delayMicroseconds(10);
+	//digitalWrite(trigger, LOW);
+	
+	
+	while(gpioRead(echo) == LOW && (gpioTick() - timeout) < 1000000);
+	start = gpioTick();
+	while(gpioRead(echo) == HIGH && (gpioTick() - timeout) < 1000000);
+	stop = gpioTick();
+	
+	time_of_flight = stop - start;
+	cout << time_of_flight  << " us" << endl; 
+	cout << time_of_flight / 77.56 << " cm" << endl; 
+	return time_of_flight  / 77.56;
+	
+}
+
+void hallway(int error, int area)
+{
+	int speed = MIDRANGE + (int)abs((float)((error * (PWMPERIOD-MIDRANGE))/ERROR_RANGE));
+	static int Lspeed = MIDRANGE;
+	static int Rspeed = MIDRANGE;
+	
+	
+	if(get_distance() > 12)
+	{
+		if(error > ACCEPTABLE_ERROR)
+		{
+		if(Lspeed < PWMPERIOD);
+			Lspeed = speed;
+		gpioPWM(ENR, MIDRANGE);
+		gpioWrite(in2R, LOW);
+		gpioWrite(in1R, HIGH);
+
+		gpioPWM(ENL, Lspeed + LEFTBIAS);
+		gpioWrite(in2L, LOW);
+		gpioWrite(in1L, HIGH);
+		cout << "Left speed: " << Lspeed << " Right speed: " << Rspeed << "\n\n";
+		
+		/*softPwmWrite(ENR,MIDRANGE+speed);			
+		digitalWrite(in2R, LOW);
+		digitalWrite(in1R, HIGH);
+		
+		softPwmWrite(ENL,10);			
+		digitalWrite(in2L, LOW);
+		digitalWrite(in1L, HIGH);*/
+		
+	
+		}
+		
+		else if(error < -ACCEPTABLE_ERROR)
+		{
+		if(Rspeed < PWMPERIOD);
+		{
+			Rspeed = speed;
+		}
+		
+		gpioPWM(ENR, Rspeed);
+		gpioWrite(in2R, LOW);
+		gpioWrite(in1R, HIGH);
+
+		gpioPWM(ENL, MIDRANGE + LEFTBIAS);
+		gpioWrite(in2L, LOW);
+		gpioWrite(in1L, HIGH);
+		cout << "Left speed: " << Lspeed << " Right speed: " << Rspeed << "\n\n";
+		
+		/*softPwmWrite(ENR, 10);			
+		digitalWrite(in2R, LOW);
+		digitalWrite(in1R, HIGH);
+		
+		softPwmWrite(ENL,speed+MIDRANGE);			
+		digitalWrite(in2L, LOW);
+		digitalWrite(in1L, HIGH);*/
+		
+		}
+		else
+		{
+		Rspeed = MIDRANGE;
+		Lspeed = MIDRANGE + LEFTBIAS;
+		gpioPWM(ENR, Rspeed);
+		gpioWrite(in2R, LOW);
+		gpioWrite(in1R, HIGH);
+
+		gpioPWM(ENL, Lspeed);
+		gpioWrite(in2L, LOW);
+		gpioWrite(in1L, HIGH);
+		/*softPwmWrite(ENR, MIDRANGE);			
+		digitalWrite(in2R, LOW);
+		digitalWrite(in1R, HIGH);
+		cout << "Both speeds: " << MIDRANGE << "\n\n";
+		softPwmWrite(ENL,MIDRANGE);			
+		digitalWrite(in2L, LOW);
+		digitalWrite(in1L, HIGH);*/
+		cout << "Left speed: " << Lspeed << " Right speed: " << Rspeed << "\n\n";
+		}
+	}
+	else
+	{
+		stopcar();
+	}
+	
+}
+
+
+int main()
+{   
+   /*while (cv::waitKey(5) != ' ')
+   {
+      car.cam.Update();
+      car.cam.Draw();
+   }*/
+    
+    //int error = 0;
+    //int servo = 3;
+    
+	wiringPiSetupGpio();
+	gpioInitialise();
+	
+	cout << "Initializing\n";
+	//softPwmCreate(servo,5.5,200);
+	Car car;
+	
+	gpioSetPWMrange(ENR,PWMPERIOD);
+	gpioSetPWMrange(ENL,PWMPERIOD);
+	//LEFT
+	gpioSetMode(ENL, PI_OUTPUT);
+	gpioSetMode(in1L, PI_OUTPUT);
+	gpioSetMode(in2L, PI_OUTPUT);
+	//RIGHT
+	gpioSetMode(ENR, PI_OUTPUT);
+	gpioSetMode(in1R, PI_OUTPUT);
+	gpioSetMode(in2R, PI_OUTPUT);
+	//ULTRASONIC
+	gpioSetMode(pulse, PI_OUTPUT);
+	gpioWrite(pulse, LOW);
+	gpioSetMode(trigger, PI_OUTPUT);
+	gpioSetMode(echo, PI_INPUT);
+	/*softPwmCreate(ENL,0,50);
+	pinMode(in1L, OUTPUT);
+	pinMode(in2L, OUTPUT);
+	
+	pinMode(pulse, OUTPUT);
+	
+	digitalWrite(pulse,LOW);
+	pinMode(trigger,OUTPUT);
+	pinMode(echo, INPUT);
+	
+	softPwmCreate(ENR,0,50);
+	pinMode(in1R, OUTPUT);
+	pinMode(in2R, OUTPUT);*/
+		
+	cout << "Pins configured\n";
+	bool keep_running = true;
+	
+	
+	while(keep_running)
+	{
+		if(kbhit())
+		{
+			int key = getchar();
+			if(key == 'q')
+				keep_running = false;
+		}
+		
+		cout << car.cam.detect_object() << endl;
+		car.cam.Draw();
+	}
+	
+	/*int temp = 0;
+
+	int key;
+	int speed = 0;
+
+	while(1)
+	{
+		softPwmWrite(ENR, speed);			
+		digitalWrite(in2R, LOW);
+		digitalWrite(in1R, HIGH);
+		
+		softPwmWrite(ENL,speed);			
+		digitalWrite(in2L, LOW);
+		digitalWrite(in1L, HIGH);
+		
+		if(kbhit())
+		{
+			key = getchar();
+			cout << key << endl;
+		
+			switch(key)
+			{
+				case 'w':
+				if(speed <= 50) 
+					speed+=1;
+				break;
+				
+				case 's':
+				if(speed >= 0)
+					speed-=1;
+				break;
+			}
+			cout << speed << endl;
+			
+		}
+	}
+	*/
+	/*
+	
+	while(keep_running)
+	{
+		if(kbhit())
+		{
+			int key = getchar();
+			if(key == 'q')
+				keep_running = false;
+		}
+			
+		
+		int temp = 0;
+			for(int count = 2; count > 0; count--)
+			{
+				temp += car.cam.track_object(GREEN);
+				car.cam.Draw();
+				
+			}
+			hallway(temp / 2,car.cam.green.area());
+			
+			//stopcar();
+			
+			cout << "ERROR: " << car.cam.green_pos.x << endl;
+
+	}
+	stopcar();*/
+	
+	/*
+	int key;
+	
+	while(keep_running)
+	{
+		if(kbhit())
+		{
+			key = getchar();
+			
+			switch(key)
+			{
+				case 'w': forward();
+				break;
+				
+				case 's': backward();
+				break;
+				
+				case 'a': left();
+				break;
+				
+				case 'd': right();
+				break;
+				
+				case ' ': stopcar();
+				break;
+				
+				case 'f': //fire();
+				break;
+				
+				case 'r': get_distance();
+				break;	
+				
+				case 'q': keep_running = false;
+				break;				
+			}
+		}
+	}*/
+	gpioTerminate();
+	cout << "DONE\n";
+	return 0;
+}
